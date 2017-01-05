@@ -80,6 +80,9 @@ pub enum WaitStatus {
     #[cfg(any(target_os = "linux",
               target_os = "android"))]
     StoppedPtraceEvent(pid_t, PtraceEvent),
+    #[cfg(any(target_os = "linux",
+              target_os = "android"))]
+    SyscallPtraceEvent(pid_t),
     Continued(pid_t),
     StillAlive
 }
@@ -115,13 +118,17 @@ mod status {
         (status & 0xff) == 0x7f
     }
     pub fn stop_signal(status: i32) -> Signal {
-        Signal::from_c_int((status & 0xFF00) >> 8).unwrap()
+        Signal::from_c_int((status & 0x7F00) >> 8).unwrap()
     }
 
     pub fn decode_ptrace_event(pid: pid_t, status: i32) -> Option<WaitStatus> {
         if stop_signal(status) == Signal::SIGTRAP {
-            PtraceEvent::from_c_int((status & 0xFF0000) >> 16)
-                .map(|event| WaitStatus::StoppedPtraceEvent(pid, event))
+            if status & 0x8000 == 0x8000 {
+                Some(WaitStatus::SyscallPtraceEvent(pid))
+            } else {
+                PtraceEvent::from_c_int((status & 0xFF0000) >> 16)
+                    .map(|event| WaitStatus::StoppedPtraceEvent(pid, event))
+            }
         } else {
             None
         }
